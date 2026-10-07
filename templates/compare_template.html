@@ -1,0 +1,197 @@
+<title>셀아웃 모델 비교</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+__CSS__
+/* comparison additions: model palette, paired accuracy bars, comparison tables */
+:root{--m-ols:#6b7686;--m-ridge:#23998b;--m-gam:#c98a12;--m-lgb:#5a9a2f;--m-xgb:#b5482f;--m-sts:#8a5cc4;--m-mmm:#2f6bd4}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--m-ols:#9aa5b4;--m-ridge:#3fbfb0;--m-gam:#e6aa3c;--m-lgb:#86c25a;--m-xgb:#e57a5f;--m-sts:#b08ae8;--m-mmm:#6a9cf0}}
+:root[data-theme="dark"]{--m-ols:#9aa5b4;--m-ridge:#3fbfb0;--m-gam:#e6aa3c;--m-lgb:#86c25a;--m-xgb:#e57a5f;--m-sts:#b08ae8;--m-mmm:#6a9cf0}
+.verdict{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.verdict li{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;line-height:1.6}
+.verdict .dot{width:10px;height:10px;border-radius:50%;margin-top:.5em}
+.acc{display:grid;grid-template-columns:minmax(96px,auto) 1fr;gap:14px 12px;align-items:center}
+.acc .nm{font-weight:600;font-size:.88rem;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.pair{display:grid;gap:4px;min-width:0}
+.pair .row{display:grid;grid-template-columns:62px 1fr 48px;gap:8px;align-items:center;font-size:.78rem;color:var(--muted)}
+.pair .track{height:12px}
+.pair .v{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--fg)}
+.flag{font-size:.72rem;font-weight:600;color:var(--neg);margin-left:6px}
+table.cmp td,table.cmp th{white-space:nowrap}
+table.cmp td.num,table.cmp th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+table.cmp th.mh{text-align:right}
+table.cmp tr.truth td{font-weight:600}
+table.cmp tr.sum td{border-top:2px solid var(--line);font-weight:600}
+.err{display:block;font-size:.7rem;font-weight:500}
+.e-good{color:var(--pos)} .e-mid{color:var(--c-disc)} .e-bad{color:var(--neg)}
+.mcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+.mcard{border:1px solid var(--line);border-radius:8px;padding:14px;display:grid;gap:6px;align-content:start;font-size:.86rem}
+.mcard h3{margin:0;font-size:.98rem;display:flex;align-items:center;gap:8px}
+.mcard .use{color:var(--muted)}
+.mcard ul{margin:0;padding-left:18px;display:grid;gap:2px}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">주간 셀아웃 · 7개 모델 비교 <span class="tag">가상 데이터 샘플</span></div>
+    <h1>어떤 모델로 판매를 설명할까</h1>
+    <p class="lede">같은 104주 데이터에 선형 회귀, 릿지 회귀, GAM, LightGBM+SHAP, XGBoost+SHAP, 구조적 시계열, 베이지안 MMM을 적용했습니다. 가상 데이터라 진짜 효과를 알고 있어서, 어느 모델이 효과를 정확히 찾아냈는지 채점할 수 있습니다.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="sum-h">
+    <h2 id="sum-h">한눈에 보는 결론</h2>
+    <ul class="verdict" id="verdict"></ul>
+  </section>
+
+  <section class="panel" aria-labelledby="acc-h">
+    <h2 id="acc-h">예측 정확도</h2>
+    <p class="hint" style="margin-top:-8px">평균 오차(MAPE)이며 짧을수록 좋습니다. ‘학습 기간’은 이미 본 데이터, ‘새 데이터’는 모델이 보지 못한 다음 8주를 맞힌 결과입니다(4번 반복 평균).</p>
+    <div class="acc" id="acc"></div>
+    <p class="hint">학습 기간 오차는 아주 작은데 새 데이터 오차가 크면 과적합입니다. 이미 본 데이터를 외웠을 뿐, 규칙을 배우지 못했다는 뜻입니다.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="eff-h">
+    <h2 id="eff-h">효과를 얼마나 정확히 찾았나</h2>
+    <p class="hint" style="margin-top:-8px">요인별 효과 크기를 모든 모델에 같은 방식으로 계산해 정답과 비교했습니다. 숫자 아래는 정답 대비 오차율입니다.</p>
+    <div class="tblwrap"><table class="cmp" id="eff"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="wk-h">
+    <div class="head">
+      <h2 id="wk-h">같은 주, 모델별 설명</h2>
+      <div class="picker">
+        <button id="prev" type="button" aria-label="이전 주">‹ 이전</button>
+        <select id="week" aria-label="주 선택"></select>
+        <button id="next" type="button" aria-label="다음 주">다음 ›</button>
+      </div>
+    </div>
+    <div class="chips" id="inputs"></div>
+    <div class="tblwrap"><table class="cmp" id="wk"></table></div>
+    <p class="hint">LightGBM·XGBoost(SHAP)의 ‘기본 수요’는 2년 평균 판매량이고, 각 요인은 평균 대비 차이입니다. 그래서 프로모션이 없는 주에는 프로모션 기여가 마이너스로 나옵니다. 다른 모델은 ‘그 요인이 없을 때’ 대비 차이라 0이 됩니다.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="mc-h">
+    <h2 id="mc-h">모델별 특징</h2>
+    <div class="mcards" id="mcards"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="nt-h">
+    <h2 id="nt-h">이 결과를 읽을 때 주의할 점</h2>
+    <ul class="notes">
+      <li>이 가상 데이터는 효과를 단순히 더하는 방식으로 만들었습니다. 그래서 같은 구조를 가정한 선형 회귀와 MMM에 유리한 시험입니다.</li>
+      <li>실제 데이터에 “공휴일에 프로모션하면 효과가 두 배” 같은 상호작용이나 복잡한 곡선이 있다면 GAM이나 LightGBM이 더 나을 수 있습니다. 실제 데이터로 다시 비교해야 합니다.</li>
+      <li>기온처럼 계절과 함께 움직이는 요인은 어느 모델이든 계절성과 효과를 나누기 어렵습니다. GAM에서 이 문제가 특히 크게 드러났습니다.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const D = __DATA__;
+const MC = {ols:"--m-ols", ridge:"--m-ridge", gam:"--m-gam", lgb:"--m-lgb", xgb:"--m-xgb", sts:"--m-sts", mmm:"--m-mmm"};
+const mcol = id => `var(${MC[id]})`;
+const fmt = v => Math.round(v).toLocaleString("ko-KR");
+const sgn = v => (Math.round(v) >= 0 ? "+" : "−") + fmt(Math.abs(v));
+const Ms = D.models, n = D.weeks.length;
+const byId = Object.fromEntries(Ms.map(m => [m.id, m]));
+const EF = [
+  ["할인","할인율 1%p당", 1],["프로모션","프로모션 주",0],["광고","광고한 주",0],["공휴일","공휴일 주",0],
+  ["기온","1°C당",1],["결품","결품 1일당",0],["계절성","계절 변동폭 ±",0]
+];
+const T = D.truth.effects;
+const errPct = (m,k) => Math.abs(m.effects[k]-T[k]) / Math.abs(T[k]) * 100;
+const avgErr = m => EF.reduce((a,[k]) => a + errPct(m,k), 0) / EF.length;
+const fv = (v, dec) => dec ? (v>=0?"+":"−") + Math.abs(v).toFixed(1) : sgn(v);
+const ecls = e => e < 10 ? "e-good" : e < 25 ? "e-mid" : "e-bad";
+const dotName = m => `<span style="display:inline-flex;align-items:center;gap:6px"><i class="sw" style="background:${mcol(m.id)};border-radius:50%"></i>${m.name}</span>`;
+
+/* ---------- verdict ---------- */
+(function(){
+  const bestCv = [...Ms].sort((a,b)=>a.cv_mape-b.cv_mape)[0];
+  const bestEff = [...Ms].sort((a,b)=>avgErr(a)-avgErr(b))[0];
+  const L = byId.lgb, X = byId.xgb, G = byId.gam, O = byId.ols, B = byId.mmm, S = byId.sts;
+  const items = [
+    ["--m-mmm", `<strong>효과 설명에는 ${bestEff.name}</strong>이 가장 정확했습니다(정답 대비 평균 오차 ${avgErr(bestEff).toFixed(1)}%). 선형 회귀(${avgErr(O).toFixed(1)}%)와 숫자는 거의 같지만, 효과의 범위와 광고 포화 곡선까지 알려줍니다.`],
+    ["--m-ols", `<strong>새 데이터 예측은 ${bestCv.name}</strong>이 가장 좋았고(오차 ${bestCv.cv_mape}%), 선형 회귀·릿지·구조적 시계열·MMM이 모두 3% 안팎으로 비슷했습니다.`],
+    ["--m-sts", `<strong>구조적 시계열은 선형 회귀와 거의 같은 결과</strong>입니다. 기본 수요가 시간에 따라 변하는 것을 허용하는 모델인데, 이 가상 데이터의 기본 수요는 일정하게 오르기만 해서 그 장점이 드러나지 않았습니다.`],
+    ["--m-lgb", `<strong>트리 모델(LightGBM·XGBoost)은 과적합</strong>됐습니다. 학습 기간 오차는 ${L.mape}%·${X.mape}%로 가장 작지만 새 데이터에서는 ${L.cv_mape}%·${X.cv_mape}%로 가장 컸고, 기온 효과를 거의 찾지 못했습니다(정답 ${T["기온"]}개).`],
+    ["--m-gam", `<strong>GAM은 기온과 계절을 혼동</strong>했습니다. 둘 다 1년 주기로 움직여서, 기온 효과(${G.effects["기온"].toFixed(1)}개)와 계절 폭(±${fmt(G.effects["계절성"])})을 모두 작게 잡았습니다.`],
+  ];
+  document.getElementById("verdict").innerHTML = items.map(([c,t]) => `<li><i class="dot" style="background:var(${c})"></i><span>${t}</span></li>`).join("");
+})();
+
+/* ---------- accuracy ---------- */
+(function(){
+  const max = Math.max(...Ms.map(m=>Math.max(m.mape, m.cv_mape))) * 1.08;
+  document.getElementById("acc").innerHTML = Ms.map(m => {
+    const over = m.cv_mape / Math.max(m.mape, .1) > 3;
+    return `<div class="nm">${dotName(m)}</div>
+    <div class="pair">
+      <div class="row"><span>학습 기간</span><div class="track"><div class="bar" style="left:0;width:${m.mape/max*100}%;background:${mcol(m.id)};opacity:.45"></div></div><span class="v">${m.mape}%</span></div>
+      <div class="row"><span>새 데이터</span><div class="track"><div class="bar" style="left:0;width:${m.cv_mape/max*100}%;background:${mcol(m.id)}"></div></div><span class="v">${m.cv_mape}%</span></div>
+      ${over ? `<div class="row"><span></span><span class="flag">과적합: 새 데이터 오차가 학습 기간의 ${(m.cv_mape/m.mape).toFixed(0)}배</span><span></span></div>` : ""}
+    </div>`;
+  }).join("");
+})();
+
+/* ---------- effects table ---------- */
+(function(){
+  let h = `<thead><tr><th>요인</th><th class="mh">정답</th>${Ms.map(m=>`<th class="mh">${dotName(m)}</th>`).join("")}</tr></thead><tbody>`;
+  EF.forEach(([k,desc,dec]) => {
+    h += `<tr><td>${k}<div class="hint">${desc}</div></td><td class="num"><b>${fv(T[k],dec)}</b></td>` +
+      Ms.map(m => { const e = errPct(m,k); return `<td class="num">${fv(m.effects[k],dec)}<span class="err ${ecls(e)}">${e<0.5?"0":e.toFixed(0)}% 차이</span></td>`; }).join("") + `</tr>`;
+  });
+  h += `<tr class="sum"><td>평균 오차율</td><td></td>${Ms.map(m => { const e = avgErr(m); return `<td class="num ${ecls(e)}">${e.toFixed(1)}%</td>`; }).join("")}</tr></tbody>`;
+  document.getElementById("eff").innerHTML = h;
+})();
+
+/* ---------- week comparison ---------- */
+const FAC = ["기본 수요","계절성","할인","프로모션","광고","공휴일","기온","결품"];
+let sel = n - 1;
+const selEl = document.getElementById("week");
+const wkLabel = i => { const d = D.weeks[i].split("-"); return `${d[0]}.${d[1]}.${d[2]} 주`; };
+for (let i = n-1; i >= 0; i--) { const o = document.createElement("option"); o.value = i; o.textContent = wkLabel(i); selEl.append(o); }
+selEl.onchange = () => setWeek(+selEl.value);
+document.getElementById("prev").onclick = () => setWeek(Math.max(0, sel-1));
+document.getElementById("next").onclick = () => setWeek(Math.min(n-1, sel+1));
+function setWeek(i){ sel = i; selEl.value = i; renderWeek(); }
+function renderWeek(){
+  const i = sel, I = D.inputs, TC = D.truth.contrib;
+  const chips = [
+    [`할인 ${I.discount_pct[i]}%`, I.discount_pct[i]>0], [`프로모션 ${I.promo[i]?"있음":"없음"}`, !!I.promo[i]],
+    [`광고비 ${I.ad_spend[i]}백만원`, I.ad_spend[i]>0], [`공휴일 ${I.holiday[i]?"있음":"없음"}`, !!I.holiday[i]],
+    [`평균기온 ${I.temp[i]}°C`, true], [`결품 ${I.stockout_days[i]}일`, I.stockout_days[i]>0],
+  ];
+  document.getElementById("inputs").innerHTML = chips.map(([t,on]) => `<span class="chip${on?" on":""}">${t}</span>`).join("");
+  const cell = (v, base) => `<td class="num${!base && Math.abs(v)>=0.5 ? (v>0?" p-txt":" n-txt"):""}" style="${!base && Math.abs(v)>=0.5 ? `color:var(${v>0?"--pos":"--neg"})`:""}">${base ? fmt(v) : sgn(v)}</td>`;
+  let h = `<thead><tr><th>요인</th><th class="mh">정답</th>${Ms.map(m=>`<th class="mh">${dotName(m)}</th>`).join("")}</tr></thead><tbody>`;
+  FAC.forEach((k, j) => {
+    h += `<tr><td>${k}</td>${cell(TC[k][i], j===0)}${Ms.map(m => cell(m.contrib[k][i], j===0)).join("")}</tr>`;
+  });
+  const tsum = FAC.reduce((a,k)=>a+TC[k][i],0);
+  h += `<tr class="sum"><td>합계 (예측)</td><td class="num">${fmt(tsum)}</td>${Ms.map(m=>`<td class="num">${fmt(m.pred[i])}</td>`).join("")}</tr>`;
+  h += `<tr><td>실제 판매</td><td class="num" colspan="${Ms.length+1}" style="text-align:left;padding-left:12px"><b>${fmt(D.actual[i])}개</b> <span class="hint">정답 합계와의 차이는 우연한 변동(노이즈)입니다</span></td></tr></tbody>`;
+  document.getElementById("wk").innerHTML = h;
+}
+
+/* ---------- model cards ---------- */
+(function(){
+  const info = {
+    ols:{use:"가장 먼저 해볼 기본 모델", pro:["공식이 단순해 설명하기 쉬움","계산이 빠르고 도구 제약이 없음"], con:["효과의 불확실성을 알려주지 않음","요인끼리 비슷하게 움직이면 계수가 불안정"]},
+    ridge:{use:"요인이 많거나 서로 겹칠 때", pro:["계수가 극단적으로 튀지 않음","선형 회귀와 똑같이 해석"], con:["효과를 살짝 0쪽으로 줄여 잡음","이 데이터에선 선형 회귀와 차이 없음"]},
+    gam:{use:"효과가 곡선 모양일 때", pro:["‘20°C까지 무관, 그 이상 급감’ 같은 곡선을 잡음","여전히 요인별로 나눠 볼 수 있음"], con:["유연한 만큼 비슷한 요인끼리 효과를 혼동하기 쉬움","곡선의 매끄러움 조절이 필요"]},
+    lgb:{use:"데이터가 많고 예측이 최우선일 때", pro:["상호작용과 복잡한 패턴을 자동으로 찾음","SHAP으로 주별 설명 가능"], con:["104주처럼 데이터가 적으면 과적합","추세가 계속 오를 때 미래를 못 따라감(외삽 불가)"]},
+    xgb:{use:"LightGBM과 같은 계열, 대안으로 비교할 때", pro:["단조 제약(효과 방향 고정) 등 옵션이 풍부","SHAP으로 주별 설명 가능"], con:["이 데이터에선 LightGBM과 거의 같은 과적합","추세 외삽 불가"]},
+    sts:{use:"기본 수요가 들쭉날쭉 변할 때, 미래 예측", pro:["기본 수요(레벨)가 시간에 따라 변하는 것을 허용","요인 효과는 선형 회귀처럼 해석"], con:["미래 예측엔 미래 요인 값(행사 계획, 기온 예보)이 필요","기본 수요가 안정적이면 선형 회귀와 차이 없음"]},
+    mmm:{use:"마케팅 예산·효과 의사결정", pro:["효과를 범위로 알려줌","광고 이월·포화를 직접 학습, ROI 계산에 적합"], con:["학습에 1~2분 걸림","사전분포 설정 등 전문 지식 필요"]},
+  };
+  document.getElementById("mcards").innerHTML = Ms.map(m => { const f = info[m.id]; return `
+    <div class="mcard"><h3><i class="sw" style="background:${mcol(m.id)};border-radius:50%"></i>${m.name}</h3>
+      <div class="use">${f.use}</div>
+      <div class="eyebrow" style="margin-top:4px">장점</div><ul>${f.pro.map(x=>`<li>${x}</li>`).join("")}</ul>
+      <div class="eyebrow" style="margin-top:4px">한계</div><ul>${f.con.map(x=>`<li>${x}</li>`).join("")}</ul>
+    </div>`; }).join("");
+})();
+
+setWeek(n-1);
+</script>

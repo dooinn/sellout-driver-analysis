@@ -1,0 +1,301 @@
+<title>셀아웃 기여도 분석</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one-column analyst report — summary strip, this-week decomposition, 2-year stack, factor guide */
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --fg:#16202c; --muted:#5b6676; --line:#dce1e7; --accent:#1d5bb8; --soft:#e9eef5;
+  --c-base:#aab4c2; --c-season:#23998b; --c-disc:#df7616; --c-promo:#c2336a; --c-ad:#2f6bd4;
+  --c-hol:#7a50c4; --c-temp:#86972a; --c-stock:#8e3a2a; --c-resid:#c9d0d8;
+  --pos:#1e8a52; --neg:#c23b2f;
+  --sans:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10151c; --surface:#18202a; --fg:#e6ebf1; --muted:#9aa5b4; --line:#2a3542; --accent:#7eaaf0; --soft:#1f2934;
+  --c-base:#5b6676; --c-season:#3fbfb0; --c-disc:#f0953f; --c-promo:#e5609a; --c-ad:#6a9cf0;
+  --c-hol:#a283e6; --c-temp:#b0c24b; --c-stock:#d06a55; --c-resid:#3a4553;
+  --pos:#4cc184; --neg:#f07468; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10151c; --surface:#18202a; --fg:#e6ebf1; --muted:#9aa5b4; --line:#2a3542; --accent:#7eaaf0; --soft:#1f2934;
+  --c-base:#5b6676; --c-season:#3fbfb0; --c-disc:#f0953f; --c-promo:#e5609a; --c-ad:#6a9cf0;
+  --c-hol:#a283e6; --c-temp:#b0c24b; --c-stock:#d06a55; --c-resid:#3a4553;
+  --pos:#4cc184; --neg:#f07468; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;padding-inline:16px;padding-block:24px 48px}
+.wrap{max-width:960px;margin:0 auto;display:grid;gap:20px}
+h1{font-size:1.65rem;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:1.15rem;font-weight:700;margin:0;text-wrap:balance}
+.eyebrow{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.lede{color:var(--muted);margin:6px 0 0;max-width:62ch}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--muted);border:1px solid var(--line)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:grid;gap:16px;min-width:0}
+.head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+.metrics{display:flex;flex-wrap:wrap;gap:8px 24px;color:var(--muted);font-size:.85rem}
+.metrics b{color:var(--fg);font-family:var(--mono);font-weight:500}
+
+/* week picker */
+.picker{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.picker button,.picker select{font:inherit;font-size:.9rem;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+.picker button:hover,.picker select:hover{border-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:.8rem;padding:3px 9px;border-radius:6px;background:var(--soft);color:var(--muted)}
+.chip.on{color:var(--fg);font-weight:600}
+
+/* headline sentence */
+.story{font-size:1.05rem;line-height:1.65;margin:0;max-width:66ch}
+.story strong{font-weight:700}
+
+/* share bar */
+.share{display:flex;height:28px;border-radius:6px;overflow:hidden;background:var(--soft)}
+.share div{height:100%;min-width:2px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.82rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block;flex:none}
+
+/* waterfall */
+.wf{display:grid;grid-template-columns:minmax(64px,auto) 1fr minmax(64px,auto);gap:6px 12px;align-items:center;font-size:.88rem}
+.wf .lab{white-space:nowrap}
+.wf .lab.total{font-weight:700}
+.track{position:relative;height:20px;min-width:0}
+.track .bar{position:absolute;top:2px;bottom:2px;border-radius:3px}
+.track .tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--fg)}
+.wf .val{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.val.p{color:var(--pos)} .val.n{color:var(--neg)}
+.wf .sep{grid-column:1/-1;border-top:1px dashed var(--line);height:0}
+
+/* weekly chart */
+.scroll{overflow-x:auto;margin-inline:-4px}
+.scroll svg{display:block;width:100%;min-width:760px;height:auto}
+svg text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.hit{fill:transparent;cursor:pointer}
+.hint{font-size:.8rem;color:var(--muted);margin:0}
+
+/* period + guide */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:20px}
+.hb{display:grid;grid-template-columns:auto 1fr auto;gap:8px 10px;align-items:center;font-size:.86rem}
+.hb .track{height:16px}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.r,th.r{text-align:right}
+.tblwrap{overflow-x:auto}
+.notes{font-size:.86rem;color:var(--muted);display:grid;gap:6px;margin:0;padding-left:18px;max-width:72ch}
+@media (prefers-reduced-motion:no-preference){.track .bar{transition:left .3s ease,width .3s ease}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">주간 셀아웃 · 요인 기여도 분해 <span class="tag">가상 데이터 샘플</span></div>
+    <h1>이번 주 판매는 무엇 때문에 움직였나</h1>
+    <p class="lede">2년(104주) 주간 데이터로 가법 회귀 모델을 학습해, 매주 판매량을 기본 수요와 요인별 기여분으로 나눴습니다. 기여분을 모두 더하면 모델 예측치가 됩니다.</p>
+    <div class="metrics" style="margin-top:10px">
+      <span>설명력 R² <b id="m-r2"></b></span>
+      <span>평균 오차 MAPE <b id="m-mape"></b></span>
+      <span>광고 이월률 <b id="m-decay"></b></span>
+    </div>
+  </header>
+
+  <section class="panel" aria-labelledby="wk-h">
+    <div class="head">
+      <h2 id="wk-h">주간 분해</h2>
+      <div class="picker">
+        <button id="prev" type="button" aria-label="이전 주">‹ 이전</button>
+        <select id="week" aria-label="주 선택"></select>
+        <button id="next" type="button" aria-label="다음 주">다음 ›</button>
+      </div>
+    </div>
+    <div class="chips" id="inputs"></div>
+    <p class="story" id="story"></p>
+    <div>
+      <div class="share" id="share" role="img" aria-label="이번 주 셀아웃 구성 비율"></div>
+      <div class="legend" id="share-legend" style="margin-top:8px"></div>
+    </div>
+    <div class="wf" id="wf"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="st-h">
+    <div class="head">
+      <h2 id="st-h">2년간 주별 기여도</h2>
+      <span class="hint">막대를 누르면 위에서 그 주를 분해합니다</span>
+    </div>
+    <div class="legend" id="stack-legend"></div>
+    <div class="scroll"><svg id="stack" viewBox="0 0 1000 340" role="img" aria-label="주별 요인 기여도 누적 막대"></svg></div>
+  </section>
+
+  <div class="cols">
+    <section class="panel" aria-labelledby="pd-h">
+      <h2 id="pd-h">기간 전체 누적 효과</h2>
+      <p class="hint" style="margin-top:-8px">기본 수요를 제외한 요인별 2년 합계 (개)</p>
+      <div class="hb" id="period"></div>
+      <p class="hint">계절성은 1년 단위로 더하면 0에 가깝지만, 주별로는 성수기와 비수기를 크게 가릅니다.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="gd-h">
+      <h2 id="gd-h">요인별 해석</h2>
+      <div class="tblwrap"><table>
+        <thead><tr><th>요인</th><th>모델이 찾은 효과</th><th class="r">정답</th></tr></thead>
+        <tbody id="guide"></tbody>
+      </table></div>
+      <p class="hint">가상 데이터는 효과를 미리 정해두고 만들었기 때문에, ‘정답’ 열과 비교하면 모델이 효과를 제대로 찾아냈는지 확인할 수 있습니다.</p>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="nt-h">
+    <h2 id="nt-h">읽을 때 주의할 점</h2>
+    <ul class="notes">
+      <li>모델 구조: 셀아웃 = 기본 수요(추세) + 계절성 + 할인 + 프로모션 + 광고(이월·포화 반영) + 공휴일 + 기온 + 결품 + 오차.</li>
+      <li>기여도는 상관에서 추정한 값입니다. 프로모션을 성수기에만 했다면 계절 효과가 프로모션 효과로 섞일 수 있습니다.</li>
+      <li>광고와 프로모션처럼 항상 같이 움직이는 요인은 서로 효과를 나누기 어렵습니다. 가능하면 따로 진행한 주가 있어야 합니다.</li>
+      <li>실제 데이터로 바꿀 때는 src/common.py의 load_data()만 교체하면 됩니다.</li>
+    </ul>
+  </section>
+</div>
+
+<script>
+const D = __DATA__;
+const TRUE = {"할인":"1%p당 +14개","프로모션":"+260개","광고":"이월률 50%","공휴일":"+180개","기온":"1°C당 −6개","결품":"1일당 −95개","계절성":"±120개"};
+const F = [
+  ["기본 수요","--c-base"],["계절성","--c-season"],["할인","--c-disc"],["프로모션","--c-promo"],
+  ["광고","--c-ad"],["공휴일","--c-hol"],["기온","--c-temp"],["결품","--c-stock"]
+];
+const n = D.weeks.length;
+let sel = n - 1;
+const fmt = v => Math.round(v).toLocaleString("ko-KR");
+const sgn = v => (v >= 0 ? "+" : "−") + fmt(Math.abs(v));
+const col = k => `var(${F.find(f=>f[0]===k)[1]})`;
+const wkLabel = i => { const d = D.weeks[i].split("-"); return `${d[0]}.${d[1]}.${d[2]} 주`; };
+
+document.getElementById("m-r2").textContent = D.metrics.r2.toFixed(2);
+document.getElementById("m-mape").textContent = D.metrics.mape + "%";
+document.getElementById("m-decay").textContent = Math.round(D.metrics.ad_decay*100) + "%";
+
+const selEl = document.getElementById("week");
+for (let i = n-1; i >= 0; i--) { const o = document.createElement("option"); o.value = i; o.textContent = wkLabel(i); selEl.append(o); }
+selEl.onchange = () => setWeek(+selEl.value);
+document.getElementById("prev").onclick = () => setWeek(Math.max(0, sel-1));
+document.getElementById("next").onclick = () => setWeek(Math.min(n-1, sel+1));
+
+function setWeek(i){ sel = i; selEl.value = i; renderWeek(); renderStack(); }
+
+function renderWeek(){
+  const i = sel, C = D.contrib, I = D.inputs;
+  const actual = D.actual[i], pred = D.pred[i];
+  // inputs
+  const chips = [
+    [`할인 ${I.discount_pct[i]}%`, I.discount_pct[i]>0],
+    [`프로모션 ${I.promo[i] ? "있음" : "없음"}`, !!I.promo[i]],
+    [`광고비 ${I.ad_spend[i]}백만원`, I.ad_spend[i]>0],
+    [`공휴일 ${I.holiday[i] ? "있음" : "없음"}`, !!I.holiday[i]],
+    [`평균기온 ${I.temp[i]}°C`, true],
+    [`결품 ${I.stockout_days[i]}일`, I.stockout_days[i]>0],
+  ];
+  document.getElementById("inputs").innerHTML = chips.map(([t,on]) => `<span class="chip${on?" on":""}">${t}</span>`).join("");
+
+  // story
+  const drivers = F.slice(1).map(([k]) => [k, C[k][i]]).filter(([,v]) => Math.abs(v) >= 15).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const base = C["기본 수요"][i];
+  const up = drivers.filter(d=>d[1]>0), dn = drivers.filter(d=>d[1]<0);
+  let s = `이번 주 셀아웃은 <strong class="num">${fmt(actual)}개</strong>로, 요인이 없었을 때의 기본 수요(<span class="num">${fmt(base)}개</span>)보다 <strong class="num">${sgn(actual-base)}개</strong> ${actual>=base?"많았습니다":"적었습니다"}. `;
+  if (up.length) s += `가장 크게 끌어올린 요인은 ${up.slice(0,3).map(([k,v])=>`<strong>${k}</strong>(<span class="num">${sgn(v)}</span>)`).join(", ")}${up.length>3?" 등":""}입니다. `;
+  if (dn.length) s += `반대로 ${dn.map(([k,v])=>`<strong>${k}</strong>(<span class="num">${sgn(v)}</span>)`).join(", ")}이(가) 판매를 줄였습니다. `;
+  if (!drivers.length) s += `특별한 요인이 없는 평범한 주였습니다. `;
+  s += `모델 예측과의 차이는 <span class="num">${sgn(actual-pred)}개</span>입니다.`;
+  document.getElementById("story").innerHTML = s;
+
+  // share bar: positive contributions as share of their sum
+  const parts = F.map(([k]) => [k, C[k][i]]);
+  const posSum = parts.filter(p=>p[1]>0).reduce((a,p)=>a+p[1],0);
+  document.getElementById("share").innerHTML = parts.filter(p=>p[1]>0).map(([k,v]) =>
+    `<div style="width:${v/posSum*100}%;background:${col(k)}" title="${k} ${Math.round(v/posSum*100)}%"></div>`).join("");
+  const negs = parts.filter(p=>p[1]<-0.5);
+  document.getElementById("share-legend").innerHTML =
+    parts.filter(p=>p[1]>0.5).map(([k,v]) => `<span><i class="sw" style="background:${col(k)}"></i>${k} <b class="num">${Math.round(v/posSum*100)}%</b></span>`).join("") +
+    (negs.length ? negs.map(([k,v]) => `<span><i class="sw" style="background:${col(k)}"></i>${k} <b class="num" style="color:var(--neg)">${sgn(v)}개</b></span>`).join("") : "");
+
+  // waterfall
+  const rows = []; let cum = 0;
+  F.forEach(([k]) => { const v = C[k][i]; rows.push({k, from:cum, to:cum+v, v}); cum += v; });
+  const max = Math.max(...rows.map(r=>Math.max(r.from,r.to)), actual, pred) * 1.04;
+  const pct = v => Math.max(0, v) / max * 100;
+  let h = "";
+  rows.forEach((r, idx) => {
+    const lo = Math.min(r.from, r.to), w = Math.abs(r.to - r.from);
+    const cls = idx===0 ? "" : (r.v > 0.5 ? "p" : r.v < -0.5 ? "n" : "");
+    h += `<div class="lab">${r.k}</div><div class="track"><div class="bar" style="left:${pct(lo)}%;width:${Math.max(w/max*100, .4)}%;background:${col(r.k)}"></div></div><div class="val ${cls}">${idx===0 ? fmt(r.v) : sgn(r.v)}</div>`;
+  });
+  h += `<div class="sep"></div>`;
+  h += `<div class="lab total">모델 예측</div><div class="track"><div class="bar" style="left:0;width:${pct(pred)}%;background:var(--accent);opacity:.85"></div></div><div class="val"><b>${fmt(pred)}</b></div>`;
+  h += `<div class="lab total">실제 판매</div><div class="track"><div class="bar" style="left:0;width:${pct(actual)}%;background:var(--fg);opacity:.75"></div></div><div class="val"><b>${fmt(actual)}</b></div>`;
+  document.getElementById("wf").innerHTML = h;
+}
+
+function renderStack(){
+  const svg = document.getElementById("stack");
+  const W = 1000, H = 340, L = 48, R = 10, T = 12, B = 30;
+  const pw = W-L-R, ph = H-T-B, C = D.contrib;
+  let yMax = 0, yMin = 0;
+  for (let i=0;i<n;i++){ let p=0,q=0; F.forEach(([k])=>{const v=C[k][i]; v>0?p+=v:q+=v;}); yMax=Math.max(yMax,p,D.actual[i]); yMin=Math.min(yMin,q); }
+  yMax = Math.ceil(yMax*1.03/250)*250; yMin = Math.floor(yMin/250)*250;
+  const y = v => T + (yMax - v) / (yMax - yMin) * ph;
+  const bw = pw / n, x = i => L + i*bw;
+  let g = "";
+  for (let t=yMin; t<=yMax; t+=250){
+    g += `<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="${t===0?1.5:1}"/>`;
+    g += `<text x="${L-6}" y="${y(t)+4}" text-anchor="end">${t.toLocaleString("ko-KR")}</text>`;
+  }
+  g += `<rect x="${x(sel)}" y="${T}" width="${bw}" height="${ph}" fill="var(--soft)" stroke="var(--accent)" stroke-width="1"/>`;
+  for (let i=0;i<n;i++){
+    let p=0, q=0;
+    F.forEach(([k])=>{
+      const v = C[k][i]; if (Math.abs(v) < .5) return;
+      const a = v>0 ? p : q, b = a + v;
+      g += `<rect x="${x(i)+bw*.12}" width="${bw*.76}" y="${y(Math.max(a,b))}" height="${Math.abs(y(a)-y(b))}" fill="${col(k)}"/>`;
+      v>0 ? p=b : q=b;
+    });
+  }
+  const pts = D.actual.map((v,i)=>`${x(i)+bw/2},${y(v)}`).join(" ");
+  g += `<polyline points="${pts}" fill="none" stroke="var(--fg)" stroke-width="1.4" stroke-linejoin="round"/>`;
+  g += `<circle cx="${x(sel)+bw/2}" cy="${y(D.actual[sel])}" r="4" fill="var(--fg)"/>`;
+  for (let i=0;i<n;i+=13){ const d=D.weeks[i].split("-"); g += `<text x="${x(i)}" y="${H-10}">${d[0].slice(2)}.${d[1]}</text>`; }
+  for (let i=0;i<n;i++) g += `<rect class="hit" x="${x(i)}" y="${T}" width="${bw}" height="${ph}" data-i="${i}"><title>${wkLabel(i)} · 실제 ${fmt(D.actual[i])}개</title></rect>`;
+  svg.innerHTML = g;
+  svg.querySelectorAll(".hit").forEach(r => r.addEventListener("click", () => setWeek(+r.dataset.i)));
+}
+
+function renderStatic(){
+  document.getElementById("stack-legend").innerHTML =
+    F.map(([k]) => `<span><i class="sw" style="background:${col(k)}"></i>${k}</span>`).join("") +
+    `<span><i class="sw" style="background:var(--fg);height:2px"></i>실제 판매</span>`;
+
+  const tot = F.slice(1).map(([k]) => [k, D.contrib[k].reduce((a,b)=>a+b,0)]).sort((a,b)=>b[1]-a[1]);
+  const m = Math.max(...tot.map(t=>Math.abs(t[1])));
+  const neg = tot.some(t=>t[1]<0);
+  const zero = neg ? Math.abs(Math.min(...tot.map(t=>t[1]))) / (m + Math.abs(Math.min(...tot.map(t=>t[1])))) * 100 : 0;
+  const span = neg ? m + Math.abs(Math.min(...tot.map(t=>t[1]))) : m;
+  document.getElementById("period").innerHTML = tot.map(([k,v]) => {
+    const w = Math.abs(v)/span*100, left = v>=0 ? zero : zero - w;
+    return `<div>${k}</div><div class="track"><div class="tick" style="left:${zero}%;width:1px;background:var(--line)"></div><div class="bar" style="left:${left}%;width:${Math.max(w,.4)}%;background:${col(k)}"></div></div><div class="val num ${v>0.5?"p":v<-0.5?"n":""}" style="text-align:right">${sgn(v)}</div>`;
+  }).join("");
+
+  const c = D.coef;
+  const amp = Math.hypot(c.s1, c.c1);
+  const G = [
+    ["계절성", `연중 최대 <b class="num">±${fmt(amp)}개</b>까지 오르내림`],
+    ["할인", `할인율 1%p당 <b class="num">${sgn(c.discount)}개</b>`],
+    ["프로모션", `프로모션 진행 주 <b class="num">${sgn(c.promo)}개</b>`],
+    ["광고", `효과가 다음 주로 <b class="num">${Math.round(D.metrics.ad_decay*100)}%</b> 이월, 광고비가 커질수록 효과 체감`],
+    ["공휴일", `공휴일이 낀 주 <b class="num">${sgn(c.holiday)}개</b>`],
+    ["기온", `평균보다 1°C 높을 때 <b class="num">${sgn(c.temp)}개</b>`],
+    ["결품", `결품 하루당 <b class="num">${sgn(c.stockout)}개</b>`],
+  ];
+  document.getElementById("guide").innerHTML = G.map(([k,t]) =>
+    `<tr><td><span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap"><i class="sw" style="background:${col(k)}"></i>${k}</span></td><td>${t}</td><td class="r num" style="white-space:nowrap;color:var(--muted)">${TRUE[k]}</td></tr>`).join("");
+}
+
+renderStatic();
+setWeek(n-1);
+</script>
